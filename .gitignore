@@ -1,0 +1,34 @@
+# General ignores
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+
+# Node.js / React ignores (frontend)
+frontend/node_modules/
+frontend/build/
+frontend/.env
+frontend/.cache/
+frontend/package-lock.json
+frontend/yarn.lock
+
+# Go ignores (backend)
+backend/tmp/
+backend/.env
+backend/vendor/
+backend/go.sum
+
+# Air live-reload binary
+tmp/
+air.*.log
+
+# OS-specific files
+*.bak
+*.tmp
+*.lock
+*.log
+*.swp
+*.swo
+.idea/
+.vscode/
