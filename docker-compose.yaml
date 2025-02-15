@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend  # Path to the backend folder
+      dockerfile: Dockerfile  # Use the Dockerfile in the backend directory
+    ports:
+      - "3001:3001"  # Expose Go backend on port 3001
+    volumes:
+      - ./backend:/app  # Mount local backend code for live reloading
+    env_file:
+      - backend/.env
+    depends_on:
+      - mongodb
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend  # The frontend directory in your project
+      dockerfile: Dockerfile  # Use the Dockerfile in the frontend directory
+    ports:
+      - "5173:5173"  # Expose frontend on port 5173
+    volumes:
+      - ./frontend:/app  # Mount the frontend directory from the host machine to the container
+      - /app/node_modules  # Ensure node_modules are not overwritten by the volume
+    networks:
+      - app-network
+    environment:
+      - VITE_HOST=0.0.0.0 
+
+  mongodb:
+    image: mongo
+    container_name: mongo_db
+    ports:
+      - "27017:27017"  # Expose MongoDB on port 27017
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
