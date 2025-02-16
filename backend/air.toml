@@ -5,8 +5,7 @@
   cmd = "go build -o ./tmp/backend ./cmd/server/main.go"   # Path to your Go application's entry point
   bin = "./tmp/backend"                                     # Path to store the compiled binary
   delay = 200                                                # Delay in milliseconds before rebuilding
-  include_dir = ["backend", "cmd", "internal", "pkg", "scripts", "config"]  # Watch these backend directories for changes
-  exclude_dir = ["frontend", "backend/tmp", "vendor", "node_modules", ".git"]  # Exclude unnecessary directories like frontend, temp files, etc.
+  include_dir = ["cmd", "internal", "pkg", "scripts", "config"]  # Watch these backend directories for changes
   exclude_file = ["*.tmp", "*.log"]                          # Exclude temporary and log files
 
 # Log settings
@@ -16,15 +15,14 @@
 
 # Watch settings
 [watch]
-  extensions = ["go", "html", "json"]                       # Watch Go files, HTML, and JSON files for changes
-  include_dir = ["backend", "cmd", "internal", "pkg", "scripts", "config"]  # Only monitor the backend directories for changes
-  exclude_dir = ["frontend", "backend/tmp", "node_modules", "backend/bin"]  # Exclude unnecessary directories
+  extensions = ["go", "json"]                       # Watch Go files, HTML, and JSON files for changes
+  include_dir = ["cmd", "internal", "pkg", "scripts", "config"]  # Only monitor the backend directories for changes
   full_reload_exts = ["env"]                                # Fully reload when .env changes
 
 # Live reloading settings
 [live]
   reload_on_change = true                                   # Enable live reloading for the backend
-  hot_reloading = false                                      # Enable hot-reloading (Air will reload without restarting the entire process)
+  hot_reloading = true                                      # Enable hot-reloading (Air will reload without restarting the entire process)
 
 # Miscellaneous settings
 [misc]

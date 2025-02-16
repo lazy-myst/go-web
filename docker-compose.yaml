@@ -4,12 +4,13 @@ services:
   backend:
     container_name: Backend
     build:
-      context: ./backend  # Path to the backend folder
-      dockerfile: Dockerfile  # Use the Dockerfile in the backend directory
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
-      - "3001:3001"  # Expose Go backend on port 3001
+      - "3001:3001"
     volumes:
-      - ./backend:/app  # Mount your backend directory from the host to the container
+      - ./backend:/app  # Sync backend files
+      - /app/tmp  # Ensure tmp is writable for Air
     env_file:
       - backend/.env
     depends_on:
@@ -21,19 +22,21 @@ services:
   frontend:
     container_name: Frontend
     build:
-      context: ./frontend  # The frontend directory in your project
-      dockerfile: Dockerfile  # Use the Dockerfile in the frontend directory
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "5173:5173"  # Expose frontend on port 5173
+      - "5173:5173"
     volumes:
-      - ./frontend:/app  # Mount the frontend directory from the host machine to the container
-      - /app/node_modules  # Ensure node_modules are not overwritten by the volume
+      - ./frontend:/app
+      - /app/node_modules  # Ensure node_modules are not overwritten
     networks:
       - app-network
     environment:
-      - VITE_HOST=0.0.0.0 
+      - VITE_HOST=0.0.0.0
+      - CHOKIDAR_USEPOLLING=true  # Enable polling to detect file changes
+      - WATCHPACK_POLLING=true
     restart: unless-stopped
-
+    
   mongodb:
     image: mongo
     container_name: mongo_db

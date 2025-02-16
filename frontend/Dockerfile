@@ -1,20 +1,24 @@
-# Use Node.js 18 as the base image for the frontend
+# Use Node.js 18 as the base image
 FROM node:18
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock) to install dependencies
+# Copy package files
 COPY package.json package-lock.json ./
 
-# Install frontend dependencies
+# Install dependencies
 RUN npm install
 
-# Copy the rest of the frontend source files
+# Copy the entire project
 COPY . .
 
-# Expose the default port Vite runs on (5173)
+# Expose Vite's development port
 EXPOSE 5173
 
-# Run the Vite development server
+# Enable polling for file changes
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+
+# Run Vite with polling enabled
 CMD ["npm", "run", "dev"]
