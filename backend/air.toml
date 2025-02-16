@@ -1,30 +1,42 @@
-# Air configuration for Go (Fiber backend) with live-reloading during development
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "bin"
 
-# Build settings
 [build]
-  cmd = "go build -o ./tmp/backend ./cmd/server/main.go"   # Path to your Go application's entry point
-  bin = "./tmp/backend"                                     # Path to store the compiled binary
-  delay = 200                                                # Delay in milliseconds before rebuilding
-  include_dir = ["cmd", "internal", "pkg", "scripts", "config"]  # Watch these backend directories for changes
-  exclude_file = ["*.tmp", "*.log"]                          # Exclude temporary and log files
+  args_bin = []
+  bin = "bin/main"
+  cmd = "go build -o ./bin/main ./cmd/server"
+  delay = 1000
+  exclude_dir = ["bin", "vendor", "scripts"]
+  exclude_file = []
+  include_dir = []
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  include_file = []
+  log = "build-errors.log"
+  poll = true
+  poll_interval = 500
+  stop_on_error = false
 
-# Log settings
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
 [log]
-  output = "stdout"                                         # Logs to stdout
-  level = "debug"                                           # Log level (debug for development)
+  main_only = false
+  silent = false
+  time = false
 
-# Watch settings
-[watch]
-  extensions = ["go", "json"]                       # Watch Go files, HTML, and JSON files for changes
-  include_dir = ["cmd", "internal", "pkg", "scripts", "config"]  # Only monitor the backend directories for changes
-  full_reload_exts = ["env"]                                # Fully reload when .env changes
-
-# Live reloading settings
-[live]
-  reload_on_change = true                                   # Enable live reloading for the backend
-  hot_reloading = true                                      # Enable hot-reloading (Air will reload without restarting the entire process)
-
-# Miscellaneous settings
 [misc]
-  colored_logs = true                                       # Enable colored logs for better readability
-  working_dir = "."                                         # Working directory for the app (root of the project)
+  clean_on_exit = false
+
+[proxy]
+  app_port = 0
+  enabled = false
+  proxy_port = 0
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

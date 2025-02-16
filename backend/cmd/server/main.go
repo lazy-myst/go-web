@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	// fmt.Println("🚀 Starting Go Fiber Server...")
+	fmt.Println("🚀 Starting Go Fiber Server...")
 
 	// Load .env file manually
 	err := godotenv.Load()

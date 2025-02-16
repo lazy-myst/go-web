@@ -1,4 +1,4 @@
-version: "3.8"
+
 
 services:
   backend:
@@ -9,8 +9,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./backend:/app  # Sync backend files
-      - /app/tmp  # Ensure tmp is writable for Air
+      - ./backend:/app
     env_file:
       - backend/.env
     depends_on:
