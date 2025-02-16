@@ -1,4 +1,4 @@
-# Use Go 1.23 as the base image
+# Use Go 1.23 as the base image (matches your local version)
 FROM golang:1.23 AS builder
 
 # Set the working directory inside the container
@@ -10,8 +10,8 @@ COPY go.mod go.sum ./
 # Download Go dependencies
 RUN go mod download
 
-# Copy the entire backend project into the container
-COPY . .  
+# Copy the entire backend project into the container (this is important!)
+COPY . .
 
 # Build the Go application and output the binary to /app/tmp/main
 RUN go build -o tmp/main cmd/server/main.go
@@ -20,4 +20,4 @@ RUN go build -o tmp/main cmd/server/main.go
 RUN go install github.com/air-verse/air@latest
 
 # Command to start Air for hot reloading (development)
-CMD ["air"]
+CMD ["air", "-c", "air.toml"]
