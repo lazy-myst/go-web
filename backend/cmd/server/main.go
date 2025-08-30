@@ -1,45 +1,78 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
-	"github.com/joho/godotenv"
-	"github.com/lazy-myst/go-web.git/config/env"
+	"github.com/lazy-myst/go-web.git/internal/config"
 	"github.com/lazy-myst/go-web.git/internal/db"
+	"github.com/lazy-myst/go-web.git/internal/handlers"
+	"github.com/lazy-myst/go-web.git/internal/socket"
 )
 
 func main() {
-	fmt.Println("🚀 Starting Go Fiber Server...")
+	// Load config
+	cfg := config.LoadConfig()
 
-	// Load .env file manually
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("❌ Error loading .env file:", err)
-	}
+	// Connect to MongoDB
+	mongoClient := db.ConnectMongo(cfg.MongoURI)
+	defer func() {
+		if err := mongoClient.Disconnect(context.TODO()); err != nil {
+			log.Printf("Error disconnecting from MongoDB: %v", err)
+		}
+	}()
 
-	// Load environment variables
-	PORT := env.GetString("PORT", "3001")
-
-	// Initialize MongoDB connection
-	client, err := db.ConnectMongoDB()
-	if err != nil {
-		log.Fatalf("❌ Failed to connect to MongoDB: %v", err)
-	}
-	defer client.Disconnect(db.Ctx)
-
-	fmt.Println("✅ Connected to MongoDB")
-
-	// Initialize Fiber app
-	app := fiber.New()
-
-	// Define a simple health check route
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "OK"})
+	// Setup Fiber app
+	app := fiber.New(fiber.Config{
+		BodyLimit: 4 * 1024 * 1024, // 4MB
 	})
 
-	// Start the server
-	log.Printf("🚀 Server is running on port %s", PORT)
-	log.Fatal(app.Listen(":" + PORT))
+	// Setup routes
+	api := app.Group("/api")
+	handlers.SetupAuthRoutes(api, mongoClient)
+	handlers.SetupChatRoutes(api, mongoClient)
+	handlers.SetupMessageRoutes(api, mongoClient)
+
+	// Setup Socket.IO server
+	socketServer := socket.SetupSocketServer(mongoClient)
+
+	// Setup HTTP server with mux to handle both Fiber and Socket.IO
+	mux := http.NewServeMux()
+	mux.Handle("/socket.io/", socketServer)
+	mux.Handle("/", adaptor.FiberApp(app))
+
+	server := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	// Graceful shutdown
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+	log.Printf("Server running on port %s", cfg.Port)
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+	log.Println("Server exited")
 }
