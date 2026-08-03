@@ -3,7 +3,7 @@
 // Every field in our .proto messages is a string, so encode/decode only
 // needs to handle the length-delimited (wire type 2) case.
 
-const GRPC_URL = import.meta.env.VITE_GRPC_URL || "http://100.68.105.127:3001";
+const GRPC_URL = import.meta.env.VITE_GRPC_URL || "";
 
 function encodeVarint(value) {
   const bytes = [];
