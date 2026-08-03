@@ -39,9 +39,19 @@ func main() {
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: cfg.CORSOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET, POST, PUT, DELETE",
+    	AllowOriginsFunc: func(origin string) bool {
+    	    // Allow anything explicitly configured (your Tailscale IP, etc.)
+    	    for _, o := range strings.Split(cfg.CORSOrigins, ",") {
+    	        if strings.TrimSpace(o) == origin {
+    	            return true
+    	        }
+    	    }
+    	    // Also allow any cloudflared quick-tunnel URL, since those change
+    	    // every run and aren't worth hardcoding.
+    	    return strings.HasSuffix(origin, ".trycloudflare.com")
+    	},
+    	AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+    	AllowMethods: "GET, POST, PUT, DELETE",
 	}))
 
 	// Setup routes
