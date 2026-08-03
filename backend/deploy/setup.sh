@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# One-time server setup: installs Go, clones the repo, builds the backend,
-# and installs the systemd service + nginx reverse proxy. Safe to re-run —
-# each step checks whether it's already done.
+# One-time server setup: installs Go/Node, clones the repo into the current
+# user's home, builds backend + frontend, installs systemd service + nginx.
+# Safe to re-run.
 #
-# Usage (on the Debian machine, as root):
+# Usage (on the Debian machine):
 #   sudo ./setup.sh
 set -euo pipefail
 
 REPO_URL="https://github.com/lazy-myst/go-web.git"
-APP_DIR="/opt/chatapp"
-APP_USER="chatapp"
+APP_USER="${SUDO_USER:-ammad}"
+APP_HOME="$(getent passwd "$APP_USER" | cut -d: -f6)"
+APP_DIR="$APP_HOME/go-web"
+BACKEND_DIR="$APP_DIR/backend"
+FRONTEND_DIR="$APP_DIR/frontend"
+WEB_ROOT="/var/www/go-web"
 GO_VERSION="1.24.13"
 GO_BIN="/usr/local/go/bin/go"
 
@@ -35,9 +39,10 @@ else
   echo "==> Go already installed: $($GO_BIN version)"
 fi
 
-if ! id "$APP_USER" >/dev/null 2>&1; then
-  echo "==> Creating system user '$APP_USER'"
-  useradd --system --create-home --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
+if ! command -v node >/dev/null 2>&1; then
+  echo "==> Installing Node.js LTS"
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+  apt-get install -y nodejs
 fi
 
 if [ -d "$APP_DIR/.git" ]; then
@@ -45,40 +50,112 @@ if [ -d "$APP_DIR/.git" ]; then
   sudo -u "$APP_USER" git -C "$APP_DIR" pull
 else
   echo "==> Cloning $REPO_URL into $APP_DIR"
-  mkdir -p "$APP_DIR"
-  chown "$APP_USER":"$APP_USER" "$APP_DIR"
   sudo -u "$APP_USER" git clone "$REPO_URL" "$APP_DIR"
 fi
 
 echo "==> Building backend"
-sudo -u "$APP_USER" bash -c "cd '$APP_DIR/backend' && CGO_ENABLED=0 '$GO_BIN' build -o bin/server ./cmd/server"
+sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && CGO_ENABLED=0 '$GO_BIN' build -o bin/server ./cmd/server"
 
-if [ ! -f "$APP_DIR/backend/.env" ]; then
-  echo "==> No .env found — copying the template. YOU MUST EDIT THIS with real values:"
-  cp "$APP_DIR/backend/deploy/.env.example" "$APP_DIR/backend/.env"
-  chown "$APP_USER":"$APP_USER" "$APP_DIR/backend/.env"
-  chmod 600 "$APP_DIR/backend/.env"
-  echo "    sudo nano $APP_DIR/backend/.env"
-  echo "    then: sudo systemctl restart chatapp-backend"
+if [ ! -f "$BACKEND_DIR/.env" ]; then
+  echo "==> No .env found — copying template. YOU MUST EDIT THIS with real values:"
+  cp "$BACKEND_DIR/deploy/.env.example" "$BACKEND_DIR/.env"
+  chown "$APP_USER":"$APP_USER" "$BACKEND_DIR/.env"
+  chmod 600 "$BACKEND_DIR/.env"
+  echo "    sudo nano $BACKEND_DIR/.env"
 fi
 
+echo "==> Building frontend"
+sudo -u "$APP_USER" bash -c "cd '$FRONTEND_DIR' && npm install && npm run build"
+
+echo "==> Deploying frontend to $WEB_ROOT"
+mkdir -p "$WEB_ROOT"
+rm -rf "${WEB_ROOT:?}"/*
+cp -r "$FRONTEND_DIR/dist/"* "$WEB_ROOT/"
+chown -R www-data:www-data "$WEB_ROOT"
+
 echo "==> Installing systemd service"
-cp "$APP_DIR/backend/deploy/chatapp-backend.service" /etc/systemd/system/chatapp-backend.service
+BACKEND_PORT="$(grep -E '^PORT=' "$BACKEND_DIR/.env" | cut -d= -f2)"
+cat > /etc/systemd/system/chatapp-backend.service <<EOF
+[Unit]
+Description=Chat backend (Go/Fiber REST + gRPC-Web chat)
+After=network.target
+
+[Service]
+Type=simple
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$BACKEND_DIR
+EnvironmentFile=$BACKEND_DIR/.env
+ExecStart=$BACKEND_DIR/bin/server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
 systemctl enable chatapp-backend
 systemctl restart chatapp-backend
 
 if command -v nginx >/dev/null 2>&1; then
-  echo "==> Installing nginx config"
-  cp "$APP_DIR/backend/deploy/nginx-chatapp.conf" /etc/nginx/sites-available/chatapp
+  echo "==> Installing nginx config (backend port: ${BACKEND_PORT:-3001})"
+  cat > /etc/nginx/sites-available/chatapp <<EOF
+server {
+    listen 80;
+    server_name _;
+
+    root $WEB_ROOT;
+    index index.html;
+
+    # Backend REST API
+    location /api/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT:-3001};
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Connection "";
+    }
+
+    # gRPC-Web chat service — path is the fully-qualified service name,
+    # not a prefix you chose (see ChatService_ServiceDesc.ServiceName).
+    location /chat.ChatService/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT:-3001};
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Connection "";
+    }
+
+    # Frontend SPA
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
   ln -sf /etc/nginx/sites-available/chatapp /etc/nginx/sites-enabled/chatapp
+  rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl reload nginx
 else
-  echo "==> nginx not found on this machine, skipping reverse proxy setup"
+  echo "==> nginx not found, installing"
+  apt-get install -y nginx
 fi
 
 echo ""
 echo "==> Done."
-echo "    Status: sudo systemctl status chatapp-backend"
-echo "    Logs:   sudo journalctl -u chatapp-backend -f"
+echo "    Backend status: sudo systemctl status chatapp-backend"
+echo "    Backend logs:   sudo journalctl -u chatapp-backend -f"
