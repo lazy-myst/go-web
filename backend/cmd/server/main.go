@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/lazy-myst/go-web.git/internal/config"
 	"github.com/lazy-myst/go-web.git/internal/db"
 	"github.com/lazy-myst/go-web.git/internal/handlers"
@@ -34,6 +35,12 @@ func main() {
 		BodyLimit: 4 * 1024 * 1024, // 4MB
 	})
 
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://10.0.2.2:8080,http://localhost:8080,http://localhost:5173,http://10.0.2.2:5173", // Add frontend origins
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowMethods: "GET, POST, PUT, DELETE",
+	}))
+
 	// Setup routes
 	api := app.Group("/api")
 	handlers.SetupAuthRoutes(api, mongoClient)
@@ -42,6 +49,12 @@ func main() {
 
 	// Setup Socket.IO server
 	socketServer := socket.SetupSocketServer(mongoClient)
+	go func() {
+		if err := socketServer.Serve(); err != nil {
+			log.Printf("Socket.IO server error: %v", err)
+		}
+	}()
+	defer socketServer.Close()
 
 	// Setup HTTP server with mux to handle both Fiber and Socket.IO
 	mux := http.NewServeMux()

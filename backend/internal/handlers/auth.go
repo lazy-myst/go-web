@@ -20,6 +20,7 @@ func SetupAuthRoutes(api fiber.Router, mongoClient *mongo.Client) {
 	auth.Post("/login", login(mongoClient))
 
 	users := api.Group("/users", authMiddleware)
+	users.Get("/profile", userProfile(mongoClient))
 	users.Get("/", listUsers(mongoClient))
 }
 
@@ -89,6 +90,28 @@ func login(mongoClient *mongo.Client) fiber.Handler {
 		}
 
 		return c.JSON(fiber.Map{"token": token})
+	}
+}
+
+func userProfile(mongoClient *mongo.Client) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Get userId from authMiddleware
+		userId, ok := c.Locals("userId").(string)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "User ID not found"})
+		}
+
+		usersColl := mongoClient.Database("chatdb").Collection("users")
+
+		var user models.User
+		if err := usersColl.FindOne(context.TODO(), bson.M{"_id": userId}).Decode(&user); err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+		}
+
+		// Remove passwordHash from response
+		user.PasswordHash = ""
+
+		return c.JSON(user)
 	}
 }
 

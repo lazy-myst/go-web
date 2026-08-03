@@ -10,6 +10,7 @@ import (
 )
 
 func ConnectMongo(uri string) *mongo.Client {
+	log.Println("DB URI", uri)
 	clientOptions := options.Client().ApplyURI(uri)
 	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {

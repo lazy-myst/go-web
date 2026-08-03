@@ -4,8 +4,8 @@ FROM golang:1.24
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install Air for live reloading
-RUN go install github.com/air-verse/air@latest
+# Install Air for live reloading (pinned: newer releases require Go >= 1.25/1.26)
+RUN go install github.com/air-verse/air@v1.62.0
 
 # Copy only go.mod and go.sum first (for caching dependencies)
 COPY go.mod go.sum ./
