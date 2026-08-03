@@ -1,0 +1,22 @@
+[Unit]
+Description=Chat backend (Go/Fiber REST + gRPC-Web chat)
+After=network.target
+
+[Service]
+Type=simple
+User=chatapp
+Group=chatapp
+WorkingDirectory=/opt/chatapp/backend
+EnvironmentFile=/opt/chatapp/backend/.env
+ExecStart=/opt/chatapp/backend/bin/server
+Restart=on-failure
+RestartSec=5
+
+# Basic hardening. Not using ProtectSystem=strict here since it can break a
+# first deploy in surprising ways (e.g. temp dirs); the app doesn't write to
+# disk at runtime so there's not much upside to chase further right now.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

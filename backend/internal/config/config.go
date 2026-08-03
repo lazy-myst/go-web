@@ -8,9 +8,10 @@ import (
 )
 
 type Config struct {
-	MongoURI  string
-	Port      string
-	JWTSecret string
+	MongoURI    string
+	Port        string
+	JWTSecret   string
+	CORSOrigins string
 }
 
 func LoadConfig() Config {
@@ -22,6 +23,9 @@ func LoadConfig() Config {
 		MongoURI:  getEnv("MONGO_URI", "mongodb://localhost:27017/chatdb"),
 		Port:      getEnv("PORT", "3000"),
 		JWTSecret: getEnv("JWT_SECRET", "secret"),
+		// Comma-separated, matches gofiber/cors' AllowOrigins format. Defaults
+		// to the local dev origins so nothing changes for `docker compose up`.
+		CORSOrigins: getEnv("CORS_ORIGINS", "http://10.0.2.2:8080,http://localhost:8080,http://localhost:5173,http://10.0.2.2:5173"),
 	}
 }
 
