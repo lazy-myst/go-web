@@ -12,10 +12,13 @@ import (
 	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/lazy-myst/go-web.git/internal/config"
 	"github.com/lazy-myst/go-web.git/internal/db"
+	"github.com/lazy-myst/go-web.git/internal/grpcchat"
 	"github.com/lazy-myst/go-web.git/internal/handlers"
-	"github.com/lazy-myst/go-web.git/internal/socket"
+	"github.com/lazy-myst/go-web.git/internal/pb"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -47,25 +50,29 @@ func main() {
 	handlers.SetupChatRoutes(api, mongoClient)
 	handlers.SetupMessageRoutes(api, mongoClient)
 
-	// Setup Socket.IO server
-	socketServer := socket.SetupSocketServer(mongoClient)
-	go func() {
-		if err := socketServer.Serve(); err != nil {
-			log.Printf("Socket.IO server error: %v", err)
-		}
-	}()
-	defer socketServer.Close()
+	// Setup gRPC chat service, wrapped for browser access (gRPC-Web)
+	grpcServer := grpc.NewServer()
+	pb.RegisterChatServiceServer(grpcServer, grpcchat.NewServer(mongoClient))
+	wrappedGrpc := grpcweb.WrapServer(grpcServer, grpcweb.WithOriginFunc(func(origin string) bool { return true }))
 
-	// Setup HTTP server with mux to handle both Fiber and Socket.IO
+	fiberHandler := adaptor.FiberApp(app)
+
+	// Setup HTTP server with mux to handle both Fiber (REST) and gRPC-Web (chat)
 	mux := http.NewServeMux()
-	mux.Handle("/socket.io/", socketServer)
-	mux.Handle("/", adaptor.FiberApp(app))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if wrappedGrpc.IsGrpcWebRequest(r) || wrappedGrpc.IsAcceptableGrpcCorsRequest(r) {
+			wrappedGrpc.ServeHTTP(w, r)
+			return
+		}
+		fiberHandler.ServeHTTP(w, r)
+	}))
 
 	server := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		Addr:    ":" + cfg.Port,
+		Handler: mux,
+		// gRPC-Web streaming calls can stay open indefinitely, so these
+		// timeouts can't apply server-wide the way they did with plain REST.
+		ReadTimeout: 10 * time.Second,
 	}
 
 	// Graceful shutdown

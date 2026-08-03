@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import * as authApi from "../api/auth";
-import { disconnectSocket } from "../lib/socket";
 
 const AuthContext = createContext(null);
 
@@ -37,7 +36,6 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    disconnectSocket();
     localStorage.removeItem("token");
     setToken(null);
     setUser(null);

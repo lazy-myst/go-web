@@ -1,20 +1,13 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-} from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useAuth } from "./AuthContext";
-import { useSocket } from "../hooks/useSocket";
+import { useGrpcStream } from "../hooks/useGrpcStream";
 import * as chatApi from "../api/chat";
+import * as grpc from "../lib/grpc";
 
 const ChatContext = createContext(null);
 
 export function ChatProvider({ children }) {
   const { token, user } = useAuth();
-  const { socket, connected } = useSocket(token);
 
   const [users, setUsers] = useState([]);
   const [chats, setChats] = useState([]);
@@ -23,16 +16,6 @@ export function ChatProvider({ children }) {
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState(null);
-
-  const currentChatRef = useRef(null);
-  useEffect(() => {
-    currentChatRef.current = currentChat;
-  }, [currentChat]);
-
-  const chatsRef = useRef([]);
-  useEffect(() => {
-    chatsRef.current = chats;
-  }, [chats]);
 
   const userById = useCallback(
     (id) => users.find((u) => u.id === id),
@@ -87,8 +70,7 @@ export function ChatProvider({ children }) {
   const startChatWith = useCallback(
     async (otherUserId) => {
       const existing = chats.find(
-        (c) =>
-          c.userIds?.length === 2 && c.userIds.includes(otherUserId)
+        (c) => c.userIds?.length === 2 && c.userIds.includes(otherUserId)
       );
       if (existing) {
         openChat(existing);
@@ -106,47 +88,43 @@ export function ChatProvider({ children }) {
   );
 
   const sendMessage = useCallback(
-    (text) => {
+    async (text) => {
       const trimmed = text.trim();
-      if (!trimmed || !currentChatRef.current || !socket) return;
-      socket.emit("newMessage", { chatId: currentChatRef.current.id, text: trimmed });
+      if (!trimmed || !currentChat) return;
+      try {
+        await grpc.sendMessage(token, currentChat.id, trimmed);
+      } catch (err) {
+        setError(err.message);
+      }
     },
-    [socket]
+    [token, currentChat]
   );
 
-  // Registered once per socket instance; reads currentChatRef so it always
-  // targets whichever chat is open right now without needing to resubscribe.
-  useEffect(() => {
-    if (!socket) return undefined;
+  // Fed by the gRPC stream. Deliberately not wrapped in useCallback: passing
+  // a fresh closure every render means useGrpcStream's internal ref always
+  // sees the current `chats`/`currentChat`, with no manual ref-mirroring
+  // needed (that's what bit the old socket.io version of this handler).
+  const handleIncomingMessage = (message) => {
+    if (message?.chatId === currentChat?.id) {
+      setMessages((prev) => [...prev, message]);
+    }
 
-    const handleNewMessage = (message) => {
-      if (message?.chatId === currentChatRef.current?.id) {
-        setMessages((prev) => [...prev, message]);
-      }
+    const knowsChat = chats.some((c) => c.id === message.chatId);
+    if (!knowsChat) {
+      refresh();
+      return;
+    }
 
-      // First message of a chat this socket wasn't told about yet (created
-      // by the other side just now) — refetch so it shows up instead of the
-      // user unknowingly creating a duplicate via "start a chat". Checked
-      // against a ref mirror of `chats`, since a setState updater's body
-      // isn't guaranteed to run synchronously enough to read back here.
-      const knowsChat = chatsRef.current.some((c) => c.id === message.chatId);
-      if (!knowsChat) {
-        refresh();
-        return;
-      }
+    setChats((prev) => {
+      const idx = prev.findIndex((c) => c.id === message.chatId);
+      if (idx === -1) return prev;
+      const updated = { ...prev[idx], latestMessage: message };
+      const rest = prev.filter((c) => c.id !== message.chatId);
+      return [updated, ...rest];
+    });
+  };
 
-      setChats((prev) => {
-        const idx = prev.findIndex((c) => c.id === message.chatId);
-        if (idx === -1) return prev;
-        const updated = { ...prev[idx], latestMessage: message };
-        const rest = prev.filter((c) => c.id !== message.chatId);
-        return [updated, ...rest];
-      });
-    };
-
-    socket.on("messageCreated", handleNewMessage);
-    return () => socket.off("messageCreated", handleNewMessage);
-  }, [socket, refresh]);
+  const { connected } = useGrpcStream(token, handleIncomingMessage);
 
   return (
     <ChatContext.Provider

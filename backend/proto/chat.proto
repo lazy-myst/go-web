@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package chat;
+
+option go_package = "github.com/lazy-myst/go-web.git/internal/pb";
+
+service ChatService {
+  rpc SendMessage(SendMessageRequest) returns (Message);
+  rpc StreamMessages(StreamRequest) returns (stream Message);
+}
+
+message SendMessageRequest {
+  string chat_id = 1;
+  string text = 2;
+}
+
+message StreamRequest {}
+
+message Message {
+  string id = 1;
+  string chat_id = 2;
+  string sender_id = 3;
+  string text = 4;
+  string created_at = 5;
+}
