@@ -53,6 +53,9 @@ else
   sudo -u "$APP_USER" git clone "$REPO_URL" "$APP_DIR"
 fi
 
+echo "==> Resolving Go modules"
+sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && '$GO_BIN' mod download"
+
 echo "==> Building backend"
 sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && CGO_ENABLED=0 '$GO_BIN' build -o bin/server ./cmd/server"
 
